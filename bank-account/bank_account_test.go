@@ -1,7 +1,6 @@
 package account
 
 import (
-	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -113,7 +112,6 @@ func TestMoreSeqCases(t *testing.T) {
 	case b != openAmt:
 		t.Fatalf("a.Balance() = %d, want %d", b, openAmt)
 	}
-	fmt.Println(z)
 	switch b, ok := z.Balance(); {
 	case !ok:
 		t.Fatal("z.Balance() returned !ok, want ok.")

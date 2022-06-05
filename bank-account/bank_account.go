@@ -5,9 +5,17 @@ import "sync"
 
 // Account type is concurrency safe thanks to sync.Mutex
 type Account struct {
-	sync.Mutex
-	Amount int64
-	Closed bool
+	sync.RWMutex
+	amount int64
+	closed bool
+}
+
+// handleConcurrency function lock and unlock the state of the account
+func (a *Account) handleConcurrency(handler func() (int64, bool)) (int64, bool) {
+	a.Lock()
+	defer a.Unlock()
+
+	return handler()
 }
 
 // Open function opens an account if amount is > 0
@@ -16,37 +24,52 @@ func Open(amount int64) *Account {
 		return nil
 	}
 
-	account := &Account{Amount: amount}
+	account := &Account{amount: amount}
 
 	return account
 }
 
 // Balance function returns account status as it does not modify state we do not need to lock it
 func (a *Account) Balance() (int64, bool) {
-	if a.Closed {
+	a.RLock()
+	defer a.RUnlock()
+
+	if a.closed {
 		return 0, false
 	}
-	return a.Amount, a.Amount >= 0
+	return a.amount, true
 }
 
-// Deposit function adds or withdraws money from account, so it needs to be locked
-func (a *Account) Deposit(amount int64) (int64, bool) {
-	a.Lock()
-	defer a.Unlock()
-	if a.Amount+amount < 0 {
-		return a.Amount, false
+// deposit funciton handles the adding and withdrawal operations in account
+func (a *Account) deposit(amount int64) func() (int64, bool) {
+	return func() (int64, bool) {
+		if !a.closed && a.amount+amount >= 0 {
+			a.amount += amount
+		} else {
+			return a.amount, false
+		}
+
+		return a.amount, true
 	}
-	a.Amount += amount
-
-	return a.Balance()
 }
 
-// Close function closes account so it needs to handle concurrency
-func (a *Account) Close() (int64, bool) {
-	a.Lock()
-	defer a.Unlock()
-	amount, balance := a.Balance()
-	a.Closed = true
+// Deposit function handles deposit in a concurrency safe way
+func (a *Account) Deposit(amount int64) (int64, bool) {
+	return a.handleConcurrency(a.deposit(amount))
+}
 
-	return amount, balance
+// close function handles closing account
+func (a *Account) close() (int64, bool) {
+	if a.closed {
+		return 0, false
+	}
+
+	a.closed = true
+
+	return a.amount, true
+}
+
+// Close function uses a concurrency safe version of close
+func (a *Account) Close() (int64, bool) {
+	return a.handleConcurrency(a.close)
 }
